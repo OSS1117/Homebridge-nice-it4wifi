@@ -1,7 +1,7 @@
 {
   "name": "homebridge-nice-it4wifi",
   "displayName": "Nice IT4WIFI (Robus)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Homebridge : portail Nice Robus via l'interface IT4WIFI / MyNice (ouverture, arrêt, fermeture, état).",
   "license": "MIT",
   "main": "index.js",

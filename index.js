@@ -1,6 +1,8 @@
 'use strict';
 
-const { NiceClient } = require('./nice-client');
+const fs = require('fs');
+const path = require('path');
+const { NiceClient, normalizeMac } = require('./nice-client');
 
 const ACCESSORY_NAME = 'NiceRobus';
 const MOVE_POLL_MS = 4000; // interrogation pendant un mouvement (l'évènement final peut manquer)
@@ -63,18 +65,19 @@ class NiceGate {
     }
 
     // ---- client Nice ----
-    const missing = ['host', 'mac', 'username', 'password'].filter((k) => !config[k]);
+    const missing = ['host', 'mac', 'username'].filter((k) => !config[k]);
     if (missing.length) {
       this.log.error(`Configuration incomplète, champs manquants : ${missing.join(', ')}`);
       return;
     }
     try {
+      this._key = `${normalizeMac(config.mac)}|${config.username}`;
       this.client = new NiceClient({
         host: config.host,
         port: config.port,
         mac: config.mac,
         username: config.username,
-        password: config.password,
+        password: config.password || this._loadPassword(),
         source: config.source,
         deviceId: config.deviceId,
         log: this.log,
@@ -151,8 +154,58 @@ class NiceGate {
     });
   }
 
+  // ---- appairage automatique ------------------------------------------------
+
+  _storeFile() {
+    return path.join(this.api.user.storagePath(), 'homebridge-nice-it4wifi.json');
+  }
+
+  _loadPassword() {
+    try {
+      return JSON.parse(fs.readFileSync(this._storeFile(), 'utf8'))[this._key] || null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  _savePassword(pwd) {
+    let all = {};
+    try {
+      all = JSON.parse(fs.readFileSync(this._storeFile(), 'utf8'));
+    } catch (err) {
+      /* premier enregistrement */
+    }
+    all[this._key] = pwd;
+    fs.writeFileSync(this._storeFile(), JSON.stringify(all, null, 2), { mode: 0o600 });
+  }
+
+  // Sans mot de passe (ni dans la config, ni enregistré) : crée l'utilisateur sur la passerelle.
+  async _ensurePaired() {
+    if (this.client.pairingPassword) return true;
+    const user = this.config.username;
+    try {
+      this.log.warn(`Aucun mot de passe : appairage automatique de l'utilisateur "${user}"…`);
+      const pwd = await this._exclusive(() => this.client.pair('Homebridge'));
+      this._savePassword(pwd);
+      this.client.setPassword(pwd);
+      this.log.warn(
+        `Utilisateur "${user}" créé. Autorisez-le dans l'app MyNice (compte administrateur, ` +
+          'gestion des utilisateurs) : le plugin se connectera ensuite tout seul.'
+      );
+      return true;
+    } catch (err) {
+      this.log.error(
+        `Appairage impossible : ${err.message}. Si l'utilisateur "${user}" existe déjà sur la ` +
+          'passerelle, changez "username" ou renseignez son "password" dans la configuration.'
+      );
+      this._markOffline(err);
+      return false;
+    }
+  }
+
   async _refresh() {
     if (!this.client || this._stopped) return;
+    if (!(await this._ensurePaired())) return;
     try {
       const st = await this._op(() => this.client.getStatus());
       this._markOnline();
@@ -166,11 +219,13 @@ class NiceGate {
     if (!this.online) this.log.info('IT4WIFI joignable');
     this.online = true;
     this._failures = 0;
+    this._lastErr = null;
   }
 
   _markOffline(err) {
-    if (this.online) this.log.warn(`IT4WIFI injoignable : ${err.message}`);
-    else this.log.debug(`IT4WIFI injoignable : ${err.message}`);
+    // un message n'est affiché qu'une fois tant qu'il ne change pas
+    if (this.online || err.message !== this._lastErr) this.log.warn(`IT4WIFI injoignable : ${err.message}`);
+    this._lastErr = err.message;
     this.online = false;
     if (this.mode === 'persistent' && !this._timers.reconnect && !this._stopped) {
       const delay = Math.min(5000 * 2 ** this._failures, 60000);

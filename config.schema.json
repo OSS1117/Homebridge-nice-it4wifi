@@ -2,7 +2,7 @@
   "pluginAlias": "NiceRobus",
   "pluginType": "accessory",
   "singular": false,
-  "headerDisplay": "Portail Nice Robus via IT4WIFI. L'utilisateur doit d'abord être appairé (voir README : `nice-it4wifi pair`) puis autorisé dans l'app MyNice.",
+  "headerDisplay": "Portail Nice Robus via IT4WIFI. Au premier démarrage, le plugin crée l'utilisateur ; il faut ensuite l'autoriser une fois dans l'app MyNice (voir les logs).",
   "schema": {
     "type": "object",
     "properties": {
@@ -27,9 +27,9 @@
         "default": "homebridge"
       },
       "password": {
-        "title": "Mot de passe d'appairage",
+        "title": "Mot de passe d'appairage (optionnel)",
         "type": "string",
-        "description": "Valeur 'pwd' renvoyée par `nice-it4wifi pair`."
+        "description": "Laisser vide : le plugin crée l'utilisateur au premier démarrage et enregistre le mot de passe lui-même."
       },
       "connectionMode": {
         "title": "Mode de connexion",
@@ -75,6 +75,6 @@
         "description": "Laisser vide pour une valeur dérivée du nom d'utilisateur."
       }
     },
-    "required": ["name", "host", "mac", "username", "password"]
+    "required": ["name", "host", "mac", "username"]
   }
 }

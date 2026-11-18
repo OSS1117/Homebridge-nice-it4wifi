@@ -120,6 +120,10 @@ class NiceClient extends EventEmitter {
     return Boolean(this.socket) && this.authenticated;
   }
 
+  setPassword(pwd) {
+    this.pairingPassword = parsePairingPassword(pwd);
+  }
+
   // ---- connexion -------------------------------------------------------
 
   _tlsConnect() {

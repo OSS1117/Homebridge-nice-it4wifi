@@ -10,37 +10,19 @@ Dans l'app Maison, le portail apparaît comme une porte de garage. HomeKit ne co
 
 ## Installation
 
-```bash
-# depuis l'archive fournie
-sudo npm install -g ./homebridge-nice-it4wifi-0.1.0.tgz
-```
-
-Aucune dépendance. Node ≥ 18, Homebridge ≥ 1.8.
-
-## 1. Appairage (une seule fois)
-
-Il faut créer un utilisateur sur la passerelle, puis l'autoriser depuis MyNice.
+Depuis GitHub, sur la machine qui fait tourner Homebridge (sans `sudo` si le compte `homebridge` ne l'autorise pas) :
 
 ```bash
-nice-it4wifi pair <IP_IT4WIFI> <MAC_IT4WIFI> homebridge
+npm install -g github:OSS1117/Homebridge-nice-it4wifi#main
 ```
 
-La commande affiche un `password`. Ensuite, dans l'app **MyNice** (compte administrateur) : gestion des utilisateurs → **autoriser** l'utilisateur `homebridge`.
+Aucune dépendance. Node ≥ 18, Homebridge ≥ 1.8. Redémarrer Homebridge ensuite.
 
-La MAC est celle de l'IT4WIFI (étiquette de l'appareil ou liste des clients de votre box), par ex. `00:0B:6C:11:22:33`.
+## Configuration (interface Homebridge)
 
-## 2. Test sans Homebridge
+Plugins → **Nice IT4WIFI (Robus)** → Paramètres : renseigner le nom, l'**IP** et la **MAC** de l'IT4WIFI (liste des appareils de votre box ; les MAC Nice commencent par `00:0B:6C`), puis laisser le nom d'utilisateur par défaut (`homebridge`). Le mot de passe se laisse **vide**.
 
-```bash
-nice-it4wifi status <IP> <MAC> homebridge <password>
-nice-it4wifi watch  <IP> <MAC> homebridge <password>    # affiche les évènements en direct
-nice-it4wifi open   <IP> <MAC> homebridge <password>    # ⚠️ le portail bouge vraiment
-DEBUG=1 nice-it4wifi status ...                          # trames échangées
-```
-
-## 3. Configuration Homebridge
-
-Via l'interface Homebridge UI, ou dans `config.json` :
+Ou dans `config.json` :
 
 ```json
 {
@@ -50,17 +32,36 @@ Via l'interface Homebridge UI, ou dans `config.json` :
       "name": "Portail",
       "host": "192.168.1.50",
       "mac": "00:0B:6C:11:22:33",
-      "username": "homebridge",
-      "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=",
-      "connectionMode": "persistent"
+      "username": "homebridge"
     }
   ]
 }
 ```
 
+## Premier démarrage : appairage automatique
+
+1. Au démarrage, le plugin crée l'utilisateur sur l'IT4WIFI et enregistre le mot de passe dans le dossier de Homebridge (`homebridge-nice-it4wifi.json`, lisible uniquement par le compte Homebridge). Les logs affichent : « Utilisateur "homebridge" créé. Autorisez-le dans l'app MyNice… ».
+2. Dans l'app **MyNice** (compte administrateur), gestion des utilisateurs : **autoriser** `homebridge`. Une seule fois.
+3. Le plugin se connecte tout seul (nouvelle tentative toutes les 5 à 60 s), sans redémarrage. Le portail apparaît ensuite dans l'app Maison.
+
+Si l'utilisateur existe déjà sur la passerelle mais que le mot de passe est perdu, changez `username` (ou renseignez `password`). L'ancien utilisateur se supprime dans MyNice.
+
+## Outil en ligne de commande (optionnel, diagnostic)
+
+```bash
+nice-it4wifi status <IP> <MAC> <utilisateur> <motDePasse>
+nice-it4wifi watch  <IP> <MAC> <utilisateur> <motDePasse>   # évènements en direct
+DEBUG=1 nice-it4wifi status ...                              # trames échangées
+```
+
+Le mot de passe enregistré par le plugin se trouve dans `homebridge-nice-it4wifi.json` (dossier de stockage Homebridge). Les valeurs `<IP>`, `<MAC>`… sont à remplacer, sans les chevrons.
+
+## Options
+
 | Option | Défaut | Rôle |
 |---|---|---|
-| `connectionMode` | `persistent` | `persistent` : session ouverte en permanence, état instantané (évènements). `onDemand` : session ouverte seulement pour une commande ou une interrogation. |
+| `password` | vide | Mot de passe d'appairage ; vide = géré automatiquement |
+| `connectionMode` | `persistent` | `persistent` : session permanente, état instantané. `onDemand` : session ouverte seulement pour une commande ou une interrogation. |
 | `pollInterval` | 30 | Secondes entre deux interrogations d'état (10–3600) |
 | `exposeStopSwitch` | true | Interrupteur « Stop » |
 | `deviceId` | 1 | Identifiant du moteur sur le bus T4 |
