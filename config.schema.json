@@ -1,0 +1,80 @@
+{
+  "pluginAlias": "NiceRobus",
+  "pluginType": "accessory",
+  "singular": false,
+  "headerDisplay": "Portail Nice Robus via IT4WIFI. L'utilisateur doit d'abord être appairé (voir README : `nice-it4wifi pair`) puis autorisé dans l'app MyNice.",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "Nom",
+        "type": "string",
+        "default": "Portail"
+      },
+      "host": {
+        "title": "Adresse IP de l'IT4WIFI",
+        "type": "string",
+        "placeholder": "192.168.1.50"
+      },
+      "mac": {
+        "title": "Adresse MAC de l'IT4WIFI",
+        "type": "string",
+        "placeholder": "00:0B:6C:11:22:33"
+      },
+      "username": {
+        "title": "Nom d'utilisateur appairé",
+        "type": "string",
+        "default": "homebridge"
+      },
+      "password": {
+        "title": "Mot de passe d'appairage",
+        "type": "string",
+        "description": "Valeur 'pwd' renvoyée par `nice-it4wifi pair`."
+      },
+      "connectionMode": {
+        "title": "Mode de connexion",
+        "type": "string",
+        "default": "persistent",
+        "oneOf": [
+          { "title": "Permanente (état instantané, bloque l'app MyNice)", "enum": ["persistent"] },
+          { "title": "À la demande (l'app MyNice reste utilisable)", "enum": ["onDemand"] }
+        ]
+      },
+      "pollInterval": {
+        "title": "Intervalle d'interrogation (secondes)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 10,
+        "maximum": 3600
+      },
+      "exposeStopSwitch": {
+        "title": "Exposer un interrupteur « Stop »",
+        "type": "boolean",
+        "default": true
+      },
+      "deviceId": {
+        "title": "Identifiant du moteur (bus T4)",
+        "type": "integer",
+        "default": 1,
+        "minimum": 1
+      },
+      "idleCloseSeconds": {
+        "title": "Mode à la demande : fermeture de session après inactivité (secondes)",
+        "type": "integer",
+        "default": 5,
+        "minimum": 1
+      },
+      "port": {
+        "title": "Port TLS",
+        "type": "integer",
+        "default": 443
+      },
+      "source": {
+        "title": "Identifiant client (avancé)",
+        "type": "string",
+        "description": "Laisser vide pour une valeur dérivée du nom d'utilisateur."
+      }
+    },
+    "required": ["name", "host", "mac", "username", "password"]
+  }
+}
