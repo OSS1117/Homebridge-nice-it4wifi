@@ -260,7 +260,11 @@ class NiceClient extends EventEmitter {
 
   _assertOk(xml, type) {
     const err = findError(xml);
-    if (err) throw new Error(`${type} refusé (${err})`);
+    if (err) {
+      // réponse brute (tronquée, mot de passe masqué) pour comprendre ce que dit la passerelle
+      const raw = xml.replace(/pwd="[^"]*"/g, 'pwd="***"').replace(/\s+/g, ' ').slice(0, 300);
+      throw new Error(`${type} refusé (${err}) – réponse : ${raw}`);
+    }
   }
 
   _onData(chunk) {
