@@ -2,7 +2,7 @@
   "pluginAlias": "NiceRobus",
   "pluginType": "accessory",
   "singular": false,
-  "headerDisplay": "Portail Nice Robus via IT4WIFI. Au premier démarrage, le plugin crée l'utilisateur ; il faut ensuite l'autoriser une fois dans l'app MyNice (voir les logs).",
+  "headerDisplay": "Portail Nice Robus via IT4WIFI. Méthode recommandée : lancer une fois « nice-it4wifi cloud-import <e-mail MyNice> » (voir le README), puis renseigner seulement l'IP et la MAC ici.",
   "schema": {
     "type": "object",
     "properties": {
@@ -19,25 +19,35 @@
       "mac": {
         "title": "Adresse MAC de l'IT4WIFI",
         "type": "string",
-        "placeholder": "00:0B:6C:11:22:33"
+        "placeholder": "AA:BB:CC:11:22:33"
       },
       "username": {
-        "title": "Nom d'utilisateur appairé",
+        "title": "Nom d'utilisateur (avancé)",
         "type": "string",
-        "default": "homebridge"
+        "description": "Laisser vide si vous avez importé les identifiants avec cloud-import. Sinon : nom de l'utilisateur à créer par l'appairage automatique (par défaut « homebridge »)."
       },
       "password": {
-        "title": "Mot de passe d'appairage (optionnel)",
+        "title": "Mot de passe de la passerelle (avancé)",
         "type": "string",
-        "description": "Laisser vide : le plugin crée l'utilisateur au premier démarrage et enregistre le mot de passe lui-même."
+        "description": "Laisser vide. Réservé aux utilisateurs avancés : mot de passe de 64 caractères hexadécimaux de la passerelle (pas celui du compte MyNice)."
       },
       "connectionMode": {
         "title": "Mode de connexion",
         "type": "string",
-        "default": "persistent",
+        "default": "onDemand",
         "oneOf": [
-          { "title": "Permanente (état instantané, bloque l'app MyNice)", "enum": ["persistent"] },
-          { "title": "À la demande (l'app MyNice reste utilisable)", "enum": ["onDemand"] }
+          {
+            "title": "À la demande (recommandé : l'IT4WIFI n'accepte qu'une session à la fois, l'app MyNice reste utilisable)",
+            "enum": [
+              "onDemand"
+            ]
+          },
+          {
+            "title": "Permanente (état instantané, mais bloque l'app MyNice)",
+            "enum": [
+              "persistent"
+            ]
+          }
         ]
       },
       "pollInterval": {
@@ -75,6 +85,10 @@
         "description": "Laisser vide pour une valeur dérivée du nom d'utilisateur."
       }
     },
-    "required": ["name", "host", "mac", "username"]
+    "required": [
+      "name",
+      "host",
+      "mac"
+    ]
   }
 }

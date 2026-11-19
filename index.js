@@ -1,8 +1,7 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const { NiceClient, normalizeMac } = require('./nice-client');
+const { Store } = require('./store');
 
 const ACCESSORY_NAME = 'NiceRobus';
 const MOVE_POLL_MS = 4000; // interrogation pendant un mouvement (l'évènement final peut manquer)
@@ -24,7 +23,7 @@ class NiceGate {
     const C = Characteristic;
 
     this.name = config.name || 'Portail';
-    this.mode = config.connectionMode === 'onDemand' ? 'onDemand' : 'persistent';
+    this.mode = config.connectionMode === 'persistent' ? 'persistent' : 'onDemand';
     this.pollInterval = Math.min(Math.max(Number(config.pollInterval) || 30, 10), 3600);
     this.idleCloseSeconds = Math.max(Number(config.idleCloseSeconds) || 5, 1);
 
@@ -65,20 +64,48 @@ class NiceGate {
     }
 
     // ---- client Nice ----
-    const missing = ['host', 'mac', 'username'].filter((k) => !config[k]);
+    const missing = ['host', 'mac'].filter((k) => !config[k]);
     if (missing.length) {
       this.log.error(`Configuration incomplète, champs manquants : ${missing.join(', ')}`);
       return;
     }
     try {
-      this._key = `${normalizeMac(config.mac)}|${config.username}`;
+      // Origine des identifiants, par ordre de priorité :
+      //  1. "password" saisi dans la configuration ;
+      //  2. identifiants importés du compte MyNice (commande cloud-import) ;
+      //  3. utilisateur créé par l'appairage automatique (à approuver dans MyNice).
+      const mac = normalizeMac(config.mac);
+      this.store = new Store(api.user.storagePath());
+      const imported = config.password ? null : this.store.getImported(mac);
+      let creds;
+      if (config.password) {
+        if (!config.username) throw new Error('"username" est requis quand "password" est renseigné');
+        creds = { username: config.username, password: config.password, source: config.source, origin: 'configuration' };
+      } else if (imported) {
+        creds = {
+          username: imported.username,
+          password: imported.password,
+          source: config.source || imported.source,
+          origin: 'import MyNice',
+        };
+      } else {
+        const username = config.username || 'homebridge';
+        this._key = `${mac}|${username}`;
+        creds = {
+          username,
+          password: this.store.getPaired(this._key),
+          source: config.source,
+          origin: 'appairage automatique',
+        };
+      }
+      this._credOrigin = creds.origin;
       this.client = new NiceClient({
         host: config.host,
         port: config.port,
         mac: config.mac,
-        username: config.username,
-        password: config.password || this._loadPassword(),
-        source: config.source,
+        username: creds.username,
+        password: creds.password,
+        source: creds.source,
         deviceId: config.deviceId,
         log: this.log,
       });
@@ -106,7 +133,7 @@ class NiceGate {
   _start() {
     this.log.info(
       `Démarrage (${this.mode === 'persistent' ? 'connexion permanente' : 'connexion à la demande'}, ` +
-        `interrogation toutes les ${this.pollInterval}s)`
+        `interrogation toutes les ${this.pollInterval}s, identifiants : ${this._credOrigin})`
     );
     this._refresh();
     this._timers.poll = setInterval(() => {
@@ -156,47 +183,26 @@ class NiceGate {
 
   // ---- appairage automatique ------------------------------------------------
 
-  _storeFile() {
-    return path.join(this.api.user.storagePath(), 'homebridge-nice-it4wifi.json');
-  }
-
-  _loadPassword() {
-    try {
-      return JSON.parse(fs.readFileSync(this._storeFile(), 'utf8'))[this._key] || null;
-    } catch (err) {
-      return null;
-    }
-  }
-
-  _savePassword(pwd) {
-    let all = {};
-    try {
-      all = JSON.parse(fs.readFileSync(this._storeFile(), 'utf8'));
-    } catch (err) {
-      /* premier enregistrement */
-    }
-    all[this._key] = pwd;
-    fs.writeFileSync(this._storeFile(), JSON.stringify(all, null, 2), { mode: 0o600 });
-  }
-
-  // Sans mot de passe (ni dans la config, ni enregistré) : crée l'utilisateur sur la passerelle.
+  // Sans mot de passe (ni dans la config, ni enregistré, ni importé) : crée l'utilisateur sur la
+  // passerelle. Il reste « en attente » tant qu'un administrateur ne l'a pas approuvé.
   async _ensurePaired() {
     if (this.client.pairingPassword) return true;
-    const user = this.config.username;
+    const user = this.client.username;
     try {
       this.log.warn(`Aucun mot de passe : appairage automatique de l'utilisateur "${user}"…`);
       const pwd = await this._exclusive(() => this.client.pair('Homebridge'));
-      this._savePassword(pwd);
+      this.store.setPaired(this._key, pwd);
       this.client.setPassword(pwd);
       this.log.warn(
-        `Utilisateur "${user}" créé. Autorisez-le dans l'app MyNice (compte administrateur, ` +
-          'gestion des utilisateurs) : le plugin se connectera ensuite tout seul.'
+        `Utilisateur "${user}" créé, mais il est « en attente » : un administrateur doit l'approuver. ` +
+          'Si vous ne trouvez pas où le faire dans MyNice, utilisez plutôt la commande ' +
+          '« nice-it4wifi cloud-import <e-mail MyNice> » (voir le README).'
       );
       return true;
     } catch (err) {
       this.log.error(
         `Appairage impossible : ${err.message}. Si l'utilisateur "${user}" existe déjà sur la ` +
-          'passerelle, changez "username" ou renseignez son "password" dans la configuration.'
+          'passerelle, changez "username", ou importez les identifiants avec « nice-it4wifi cloud-import ».'
       );
       this._markOffline(err);
       return false;
@@ -224,8 +230,12 @@ class NiceGate {
 
   _markOffline(err) {
     // un message n'est affiché qu'une fois tant qu'il ne change pas
-    if (this.online || err.message !== this._lastErr) this.log.warn(`IT4WIFI injoignable : ${err.message}`);
-    this._lastErr = err.message;
+    let msg = err.message;
+    if (this._credOrigin === 'import MyNice' && /refusé/.test(msg)) {
+      msg += ' — les identifiants importés sont peut-être périmés : relancez « nice-it4wifi cloud-import »';
+    }
+    if (this.online || msg !== this._lastErr) this.log.warn(`IT4WIFI injoignable : ${msg}`);
+    this._lastErr = msg;
     this.online = false;
     if (this.mode === 'persistent' && !this._timers.reconnect && !this._stopped) {
       const delay = Math.min(5000 * 2 ** this._failures, 60000);
@@ -307,6 +317,9 @@ class NiceGate {
     try {
       await this._op(() => this.client.command(action));
       this._markOnline();
+      // Retour visuel immédiat dans HomeKit ; le rafraîchissement ci-dessous corrige si le portail n'a pas bougé.
+      if (action === 'open' && this.state.door !== 'open') this._apply({ door: 'opening' });
+      if (action === 'close' && this.state.door !== 'closed') this._apply({ door: 'closing' });
     } catch (err) {
       this.log.error(`Échec de la commande "${action}" : ${err.message}`);
       this._markOffline(err);

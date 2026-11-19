@@ -71,7 +71,8 @@ function parseDeviceStatus(xml, deviceId) {
   if (!dev) return null;
   const door = /<DoorStatus[^>]*>\s*([A-Za-z]+)\s*<\/DoorStatus>/.exec(dev[1]);
   const state = door ? normalizeDoorState(door[1]) : null;
-  if (!state) return null;
+  const unknown = door && /^unknow/i.test(door[1]); // état « inconnu » signalé par la passerelle
+  if (!state && !unknown) return null;
   const obs = /<Obstruct[^>]*>\s*(\w+)\s*<\/Obstruct>/.exec(dev[1]);
   return {
     door: state,
@@ -151,6 +152,16 @@ class NiceClient extends EventEmitter {
       });
       socket.once('error', (err) => {
         clearTimeout(timer);
+        if (/disconnected before secure TLS|ECONNRESET/.test(err.message)) {
+          reject(
+            new Error(
+              'la passerelle a coupé la connexion avant le chiffrement TLS : une autre session est ' +
+                'probablement ouverte (fermez complètement l’app MyNice, attendez quelques minutes) ' +
+                `[${err.message}]`
+            )
+          );
+          return;
+        }
         reject(err);
       });
     });
@@ -236,7 +247,7 @@ class NiceClient extends EventEmitter {
       `<Request id="${id}" source="${this.source}" target="${this.mac}" gw="gwID" ` +
       `protocolType="NHK" protocolVersion="1.0" type="${type}">\r\n`;
     let xml = start + body;
-    if (sign) xml += `<Sign>${this._sign(start + body)}</Sign>`;
+    if (sign) xml += `<Sign>${this._sign(start + body)}</Sign>\r\n`;
     xml += '</Request>\r\n';
 
     this.log.debug(`-> ${type} (id ${id})`);
@@ -330,7 +341,7 @@ class NiceClient extends EventEmitter {
     const body =
       `<Devices><Device id="${this.deviceId}">\n` +
       `<Services><DoorAction>${action}</DoorAction>\n` +
-      `</Services ></Device></Devices>`;
+      `</Services></Device></Devices>\r\n`;
     const r = await this._send('CHANGE', body);
     this._assertOk(r, 'CHANGE');
   }
